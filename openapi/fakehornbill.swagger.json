@@ -1,0 +1,318 @@
+{
+  "swagger": "2.0",
+  "info": {
+    "title": "Fake Hornbill Agent API",
+    "version": "0.1.0",
+    "description": "Agent-friendly demo API for Copilot Studio escalation to a Hornbill-like ticketing backend."
+  },
+  "host": "fakehornbill.example.com",
+  "basePath": "/",
+  "schemes": ["https"],
+  "consumes": ["application/json"],
+  "produces": ["application/json"],
+  "paths": {
+    "/health": {
+      "get": {
+        "operationId": "HealthCheck",
+        "summary": "Health check",
+        "responses": {
+          "200": {
+            "description": "API is healthy",
+            "schema": { "$ref": "#/definitions/HealthResponse" }
+          }
+        }
+      }
+    },
+    "/tickets": {
+      "post": {
+        "operationId": "CreateSupportTicket",
+        "summary": "Create support ticket",
+        "description": "Creates a support ticket when the agent decides that the conversation should be escalated.",
+        "parameters": [
+          {
+            "name": "request",
+            "in": "body",
+            "required": true,
+            "schema": { "$ref": "#/definitions/CreateTicketRequest" }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Ticket created",
+            "schema": { "$ref": "#/definitions/CreateTicketResponse" }
+          },
+          "400": {
+            "description": "Validation error",
+            "schema": { "$ref": "#/definitions/ValidationError" }
+          }
+        }
+      }
+    },
+    "/tickets/{ticketId}": {
+      "get": {
+        "operationId": "GetSupportTicket",
+        "summary": "Get support ticket",
+        "description": "Gets current status and summary for a support ticket.",
+        "parameters": [
+          {
+            "name": "ticketId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Ticket found",
+            "schema": { "$ref": "#/definitions/Ticket" }
+          },
+          "404": {
+            "description": "Ticket not found",
+            "schema": { "$ref": "#/definitions/NotFoundError" }
+          }
+        }
+      }
+    },
+    "/tickets/{ticketId}/comments": {
+      "post": {
+        "operationId": "AddSupportTicketComment",
+        "summary": "Add support ticket comment",
+        "description": "Adds a user-visible or internal comment to a ticket timeline.",
+        "parameters": [
+          {
+            "name": "ticketId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "request",
+            "in": "body",
+            "required": true,
+            "schema": { "$ref": "#/definitions/AddTicketCommentRequest" }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Comment added",
+            "schema": { "$ref": "#/definitions/AddTicketCommentResponse" }
+          },
+          "400": {
+            "description": "Validation error",
+            "schema": { "$ref": "#/definitions/ValidationError" }
+          },
+          "404": {
+            "description": "Ticket not found",
+            "schema": { "$ref": "#/definitions/NotFoundError" }
+          }
+        }
+      }
+    },
+    "/tickets/{ticketId}/status": {
+      "patch": {
+        "operationId": "UpdateSupportTicketStatus",
+        "summary": "Update support ticket status",
+        "description": "Updates the fake status of a support ticket for demo flows.",
+        "parameters": [
+          {
+            "name": "ticketId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "request",
+            "in": "body",
+            "required": true,
+            "schema": { "$ref": "#/definitions/UpdateTicketStatusRequest" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Status updated",
+            "schema": { "$ref": "#/definitions/UpdateTicketStatusResponse" }
+          },
+          "400": {
+            "description": "Validation error",
+            "schema": { "$ref": "#/definitions/ValidationError" }
+          },
+          "404": {
+            "description": "Ticket not found",
+            "schema": { "$ref": "#/definitions/NotFoundError" }
+          }
+        }
+      }
+    },
+    "/users/resolve": {
+      "get": {
+        "operationId": "ResolveRequester",
+        "summary": "Resolve requester",
+        "description": "Resolves an email or user id into a fake requester profile.",
+        "parameters": [
+          {
+            "name": "email",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          },
+          {
+            "name": "userId",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Requester resolved",
+            "schema": { "$ref": "#/definitions/Requester" }
+          },
+          "400": {
+            "description": "Validation error",
+            "schema": { "$ref": "#/definitions/ValidationError" }
+          },
+          "404": {
+            "description": "Requester not found",
+            "schema": { "$ref": "#/definitions/NotFoundError" }
+          }
+        }
+      }
+    }
+  },
+  "definitions": {
+    "HealthResponse": {
+      "type": "object",
+      "properties": {
+        "status": { "type": "string" },
+        "service": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      }
+    },
+    "CreateTicketRequest": {
+      "type": "object",
+      "required": ["title", "description"],
+      "properties": {
+        "requesterEmail": { "type": "string" },
+        "requesterUserId": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "category": { "type": "string" },
+        "priority": { "$ref": "#/definitions/TicketPriority" },
+        "conversationSummary": { "type": "string" },
+        "source": { "type": "string", "default": "CopilotStudio" },
+        "correlationId": { "type": "string" }
+      }
+    },
+    "CreateTicketResponse": {
+      "type": "object",
+      "properties": {
+        "ticketId": { "type": "string" },
+        "externalTicketId": { "type": "string" },
+        "status": { "$ref": "#/definitions/TicketStatus" },
+        "title": { "type": "string" },
+        "priority": { "$ref": "#/definitions/TicketPriority" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "url": { "type": "string" },
+        "message": { "type": "string" },
+        "correlationId": { "type": "string" }
+      }
+    },
+    "Ticket": {
+      "type": "object",
+      "properties": {
+        "ticketId": { "type": "string" },
+        "externalTicketId": { "type": "string" },
+        "status": { "$ref": "#/definitions/TicketStatus" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "category": { "type": "string" },
+        "priority": { "$ref": "#/definitions/TicketPriority" },
+        "requesterEmail": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "url": { "type": "string" }
+      }
+    },
+    "AddTicketCommentRequest": {
+      "type": "object",
+      "required": ["comment"],
+      "properties": {
+        "comment": { "type": "string" },
+        "authorEmail": { "type": "string" },
+        "visibility": { "type": "string", "enum": ["public", "internal"] },
+        "correlationId": { "type": "string" }
+      }
+    },
+    "AddTicketCommentResponse": {
+      "type": "object",
+      "properties": {
+        "ticketId": { "type": "string" },
+        "commentId": { "type": "string" },
+        "status": { "type": "string" },
+        "message": { "type": "string" },
+        "correlationId": { "type": "string" }
+      }
+    },
+    "UpdateTicketStatusRequest": {
+      "type": "object",
+      "required": ["status"],
+      "properties": {
+        "status": { "$ref": "#/definitions/TicketStatus" },
+        "correlationId": { "type": "string" }
+      }
+    },
+    "UpdateTicketStatusResponse": {
+      "type": "object",
+      "properties": {
+        "ticketId": { "type": "string" },
+        "status": { "$ref": "#/definitions/TicketStatus" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "message": { "type": "string" },
+        "correlationId": { "type": "string" }
+      }
+    },
+    "Requester": {
+      "type": "object",
+      "properties": {
+        "requesterUserId": { "type": "string" },
+        "requesterEmail": { "type": "string" },
+        "displayName": { "type": "string" },
+        "organization": { "type": "string" },
+        "hornbillCustomerId": { "type": "string" }
+      }
+    },
+    "ValidationError": {
+      "type": "object",
+      "properties": {
+        "errorCode": { "type": "string" },
+        "message": { "type": "string" },
+        "details": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/ValidationErrorDetail" }
+        }
+      }
+    },
+    "ValidationErrorDetail": {
+      "type": "object",
+      "properties": {
+        "field": { "type": "string" },
+        "message": { "type": "string" }
+      }
+    },
+    "NotFoundError": {
+      "type": "object",
+      "properties": {
+        "errorCode": { "type": "string" },
+        "message": { "type": "string" }
+      }
+    },
+    "TicketPriority": {
+      "type": "string",
+      "enum": ["Low", "Medium", "High"]
+    },
+    "TicketStatus": {
+      "type": "string",
+      "enum": ["New", "Created", "InProgress", "Resolved", "Closed"]
+    }
+  }
+}

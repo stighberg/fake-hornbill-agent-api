@@ -1,0 +1,1087 @@
+{
+  "info": {
+    "_postman_id": "ba2e068e-340c-469a-8460-a97b5645bf11",
+    "name": "FakeHornBill + Hornbill API - Agent Demo",
+    "description": "Postman collection for a Copilot Studio / agent escalation demo. Contains a fake agent-facing contract and selected Hornbill Service Manager XMLMC API calls for ticket creation, retrieval and lifecycle operations.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "if (!pm.environment.get('ticketTitle')) { pm.environment.set('ticketTitle', 'Demo ticket from Copilot Studio'); }",
+          "if (!pm.environment.get('ticketDescription')) { pm.environment.set('ticketDescription', 'This is a demo escalation created from the agent flow.'); }",
+          "if (!pm.environment.get('conversationSummary')) { pm.environment.set('conversationSummary', 'User could not solve the issue through self-service and asked for support.'); }"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "00 - FakeHornBill Agent Contract",
+      "description": "Use this folder first against Beeceptor, Mockoon Cloud, Postman Mock Server or another fake/demo backend. This is the contract Copilot Studio should call.",
+      "item": [
+        {
+          "name": "Create Ticket - Agent Contract",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "X-Correlation-ID",
+                "value": "{{$guid}}",
+                "type": "text"
+              }
+            ],
+            "description": "Agent-friendly endpoint for creating a support ticket in the fake backend. This is the shape we want Copilot Studio to depend on.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"requesterUserId\": \"{{demoRequesterUserId}}\",\n  \"requesterEmail\": \"{{demoRequesterEmail}}\",\n  \"title\": \"{{ticketTitle}}\",\n  \"description\": \"{{ticketDescription}}\",\n  \"category\": \"{{ticketCategory}}\",\n  \"priority\": \"{{ticketPriority}}\",\n  \"conversationSummary\": \"{{conversationSummary}}\",\n  \"metadata\": {\n    \"source\": \"CopilotStudio\",\n    \"correlationId\": \"{{$guid}}\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{fakeHornbillBaseUrl}}/tickets",
+              "host": [
+                "{{fakeHornbillBaseUrl}}/tickets"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP status is 2xx\", function () {",
+                  "    pm.expect(pm.response.code).to.be.within(200, 299);",
+                  "});",
+                  "",
+                  "let response = {};",
+                  "try {",
+                  "    response = pm.response.json();",
+                  "} catch (e) {",
+                  "    console.log(\"Response is not JSON\", e);",
+                  "}",
+                  "",
+                  "const params = response.params || response;",
+                  "const requestId =",
+                  "    params.requestId ||",
+                  "    params.requestRef ||",
+                  "    params.h_pk_reference ||",
+                  "    response.requestId ||",
+                  "    response.requestRef ||",
+                  "    response.ticketId;",
+                  "",
+                  "if (requestId) {",
+                  "    pm.environment.set(\"lastHornbillRequestId\", requestId);",
+                  "    console.log(\"Stored lastHornbillRequestId:\", requestId);",
+                  "}",
+                  "",
+                  "const requestUrl = params.requestUrl || response.requestUrl || response.url;",
+                  "if (requestUrl) {",
+                  "    pm.environment.set(\"lastHornbillRequestUrl\", requestUrl);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Get Ticket - Agent Contract",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "X-Correlation-ID",
+                "value": "{{$guid}}",
+                "type": "text"
+              }
+            ],
+            "description": "Fetch ticket by id from fake backend.",
+            "url": {
+              "raw": "{{fakeHornbillBaseUrl}}/tickets/{{lastHornbillRequestId}}",
+              "host": [
+                "{{fakeHornbillBaseUrl}}/tickets/{{lastHornbillRequestId}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP status is 2xx\", function () {",
+                  "    pm.expect(pm.response.code).to.be.within(200, 299);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Add Ticket Comment - Agent Contract",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "X-Correlation-ID",
+                "value": "{{$guid}}",
+                "type": "text"
+              }
+            ],
+            "description": "Add a comment to a ticket in fake backend.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"Oppdatering fra Copilot Studio: Bruker har bekreftet at problemet fortsatt gjelder.\",\n  \"visibility\": \"public\",\n  \"metadata\": {\n    \"source\": \"CopilotStudio\",\n    \"correlationId\": \"{{$guid}}\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{fakeHornbillBaseUrl}}/tickets/{{lastHornbillRequestId}}/comments",
+              "host": [
+                "{{fakeHornbillBaseUrl}}/tickets/{{lastHornbillRequestId}}/comments"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP status is 2xx\", function () {",
+                  "    pm.expect(pm.response.code).to.be.within(200, 299);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "01 - Hornbill Chatbot APIs",
+      "description": "Hornbill APIs designed for chatbot scenarios.",
+      "item": [
+        {
+          "name": "chatbotLogRequest",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "ESP-APIKEY {{hornbillApiKey}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "X-Correlation-ID",
+                "value": "{{$guid}}",
+                "type": "text"
+              }
+            ],
+            "description": "Logs an Incident or Service Request using Hornbill's chatbot-friendly API.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"@service\": \"apps/com.hornbill.servicemanager\",\n  \"@method\": \"chatbotLogRequest\",\n  \"params\": {\n    \"userId\": \"{{demoRequesterUserId}}\",\n    \"requestType\": \"{{defaultRequestType}}\",\n    \"summary\": \"{{ticketTitle}}\",\n    \"description\": \"{{ticketDescription}}\",\n    \"serviceId\": \"{{defaultServiceId}}\",\n    \"catalogId\": \"{{defaultCatalogId}}\",\n    \"assetId\": \"\",\n    \"questions\": \"{\\\"source\\\":\\\"CopilotStudio\\\",\\\"conversationSummary\\\":\\\"{{conversationSummary}}\\\"}\",\n    \"questionFieldMap\": \"{}\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{hornbillBaseUrl}}/{{hornbillInstanceId}}/xmlmc/apps/com.hornbill.servicemanager",
+              "host": [
+                "{{hornbillBaseUrl}}/{{hornbillInstanceId}}/xmlmc/apps/com.hornbill.servicemanager"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP status is 2xx\", function () {",
+                  "    pm.expect(pm.response.code).to.be.within(200, 299);",
+                  "});",
+                  "",
+                  "let response = {};",
+                  "try {",
+                  "    response = pm.response.json();",
+                  "} catch (e) {",
+                  "    console.log(\"Response is not JSON\", e);",
+                  "}",
+                  "",
+                  "const params = response.params || response;",
+                  "const requestId =",
+                  "    params.requestId ||",
+                  "    params.requestRef ||",
+                  "    params.h_pk_reference ||",
+                  "    response.requestId ||",
+                  "    response.requestRef ||",
+                  "    response.ticketId;",
+                  "",
+                  "if (requestId) {",
+                  "    pm.environment.set(\"lastHornbillRequestId\", requestId);",
+                  "    console.log(\"Stored lastHornbillRequestId:\", requestId);",
+                  "}",
+                  "",
+                  "const requestUrl = params.requestUrl || response.requestUrl || response.url;",
+                  "if (requestUrl) {",
+                  "    pm.environment.set(\"lastHornbillRequestUrl\", requestUrl);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "chatbotGetRecentRequests",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "ESP-APIKEY {{hornbillApiKey}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "X-Correlation-ID",
+                "value": "{{$guid}}",
+                "type": "text"
+              }
+            ],
+            "description": "Returns recent requests for a chatbot session user.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"@service\": \"apps/com.hornbill.servicemanager\",\n  \"@method\": \"chatbotGetRecentRequests\",\n  \"params\": {\n    \"userId\": \"{{demoRequesterUserId}}\",\n    \"requestType\": \"Incident,Service Request\",\n    \"requestStatus\": \"status.new,status.open,status.onHold\",\n    \"requestServiceId\": \"\",\n    \"requestCatalogId\": \"\",\n    \"rowstart\": 0,\n    \"limit\": 5\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{hornbillBaseUrl}}/{{hornbillInstanceId}}/xmlmc/apps/com.hornbill.servicemanager",
+              "host": [
+                "{{hornbillBaseUrl}}/{{hornbillInstanceId}}/xmlmc/apps/com.hornbill.servicemanager"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP status is 2xx\", function () {",
+                  "    pm.expect(pm.response.code).to.be.within(200, 299);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "02 - Hornbill Request Creation",
+      "description": "Core Hornbill request creation operations.",
+      "item": [
+        {
+          "name": "Requests / logRequest - Generic",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "ESP-APIKEY {{hornbillApiKey}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "X-Correlation-ID",
+                "value": "{{$guid}}",
+                "type": "text"
+              }
+            ],
+            "description": "Creates a generic Request. Note: docs state this does not spawn BPM; use specific logIncident/logServiceRequest when BPM should be spawned.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"@service\": \"apps/com.hornbill.servicemanager/Requests\",\n  \"@method\": \"logRequest\",\n  \"params\": {\n    \"summary\": \"{{ticketTitle}}\",\n    \"description\": \"{{ticketDescription}}\",\n    \"requestType\": \"{{defaultRequestType}}\",\n    \"customerId\": \"{{demoCustomerId}}\",\n    \"customerType\": \"{{demoCustomerType}}\",\n    \"ownerId\": \"{{defaultOwnerId}}\",\n    \"teamId\": \"{{defaultTeamId}}\",\n    \"status\": \"{{defaultStatus}}\",\n    \"priorityId\": \"{{defaultPriorityId}}\",\n    \"categoryId\": \"{{defaultCategoryId}}\",\n    \"categoryName\": \"{{ticketCategory}}\",\n    \"sourceType\": \"Chat\",\n    \"sourceId\": \"CopilotStudio\",\n    \"impact\": \"{{defaultImpact}}\",\n    \"urgency\": \"{{defaultUrgency}}\",\n    \"serviceId\": \"{{defaultServiceId}}\",\n    \"questions\": \"{\\\"source\\\":\\\"CopilotStudio\\\",\\\"conversationSummary\\\":\\\"{{conversationSummary}}\\\"}\",\n    \"resolutionDetails\": \"\",\n    \"siteName\": \"\",\n    \"catalogId\": \"{{defaultCatalogId}}\",\n    \"catalogName\": \"\",\n    \"externalRefNumber\": \"COPILOT-{{$timestamp}}\",\n    \"questionFieldMap\": \"{}\",\n    \"senderDetails\": \"{}\",\n    \"ccDetails\": \"{}\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{hornbillBaseUrl}}/{{hornbillInstanceId}}/xmlmc/apps/com.hornbill.servicemanager/Requests",
+              "host": [
+                "{{hornbillBaseUrl}}/{{hornbillInstanceId}}/xmlmc/apps/com.hornbill.servicemanager/Requests"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP status is 2xx\", function () {",
+                  "    pm.expect(pm.response.code).to.be.within(200, 299);",
+                  "});",
+                  "",
+                  "let response = {};",
+                  "try {",
+                  "    response = pm.response.json();",
+                  "} catch (e) {",
+                  "    console.log(\"Response is not JSON\", e);",
+                  "}",
+                  "",
+                  "const params = response.params || response;",
+                  "const requestId =",
+                  "    params.requestId ||",
+                  "    params.requestRef ||",
+                  "    params.h_pk_reference ||",
+                  "    response.requestId ||",
+                  "    response.requestRef ||",
+                  "    response.ticketId;",
+                  "",
+                  "if (requestId) {",
+                  "    pm.environment.set(\"lastHornbillRequestId\", requestId);",
+                  "    console.log(\"Stored lastHornbillRequestId:\", requestId);",
+                  "}",
+                  "",
+                  "const requestUrl = params.requestUrl || response.requestUrl || response.url;",
+                  "if (requestUrl) {",
+                  "    pm.environment.set(\"lastHornbillRequestUrl\", requestUrl);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Incidents / logIncident",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "ESP-APIKEY {{hornbillApiKey}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "X-Correlation-ID",
+                "value": "{{$guid}}",
+                "type": "text"
+              }
+            ],
+            "description": "Creates an Incident and can spawn BPM when service/catalog inputs are configured.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"@service\": \"apps/com.hornbill.servicemanager/Incidents\",\n  \"@method\": \"logIncident\",\n  \"params\": {\n    \"summary\": \"{{ticketTitle}}\",\n    \"description\": \"{{ticketDescription}}\",\n    \"requestType\": \"Incident\",\n    \"customerId\": \"{{demoCustomerId}}\",\n    \"customerType\": \"{{demoCustomerType}}\",\n    \"ownerId\": \"{{defaultOwnerId}}\",\n    \"teamId\": \"{{defaultTeamId}}\",\n    \"employeeAssignmentId\": \"\",\n    \"status\": \"{{defaultStatus}}\",\n    \"priorityId\": \"{{defaultPriorityId}}\",\n    \"categoryId\": \"{{defaultCategoryId}}\",\n    \"categoryName\": \"{{ticketCategory}}\",\n    \"sourceType\": \"Chat\",\n    \"sourceId\": \"CopilotStudio\",\n    \"assetId\": \"\",\n    \"impact\": \"{{defaultImpact}}\",\n    \"urgencyId\": \"\",\n    \"serviceId\": \"{{defaultServiceId}}\",\n    \"questions\": \"{\\\"source\\\":\\\"CopilotStudio\\\",\\\"conversationSummary\\\":\\\"{{conversationSummary}}\\\"}\",\n    \"resolutionDetails\": \"\",\n    \"fileName\": \"\",\n    \"siteId\": \"\",\n    \"siteName\": \"\",\n    \"catalogId\": \"{{defaultCatalogId}}\",\n    \"catalogName\": \"\",\n    \"externalRefNumber\": \"COPILOT-{{$timestamp}}\",\n    \"bpmName\": \"\",\n    \"questionFieldMap\": \"{}\",\n    \"senderDetails\": \"{}\",\n    \"ccDetails\": \"{}\",\n    \"connectionMap\": \"[]\",\n    \"connectionUpdateTimeline\": false,\n    \"connectionTimelineVisibility\": \"{{defaultVisibility}}\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{hornbillBaseUrl}}/{{hornbillInstanceId}}/xmlmc/apps/com.hornbill.servicemanager/Incidents",
+              "host": [
+                "{{hornbillBaseUrl}}/{{hornbillInstanceId}}/xmlmc/apps/com.hornbill.servicemanager/Incidents"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP status is 2xx\", function () {",
+                  "    pm.expect(pm.response.code).to.be.within(200, 299);",
+                  "});",
+                  "",
+                  "let response = {};",
+                  "try {",
+                  "    response = pm.response.json();",
+                  "} catch (e) {",
+                  "    console.log(\"Response is not JSON\", e);",
+                  "}",
+                  "",
+                  "const params = response.params || response;",
+                  "const requestId =",
+                  "    params.requestId ||",
+                  "    params.requestRef ||",
+                  "    params.h_pk_reference ||",
+                  "    response.requestId ||",
+                  "    response.requestRef ||",
+                  "    response.ticketId;",
+                  "",
+                  "if (requestId) {",
+                  "    pm.environment.set(\"lastHornbillRequestId\", requestId);",
+                  "    console.log(\"Stored lastHornbillRequestId:\", requestId);",
+                  "}",
+                  "",
+                  "const requestUrl = params.requestUrl || response.requestUrl || response.url;",
+                  "if (requestUrl) {",
+                  "    pm.environment.set(\"lastHornbillRequestUrl\", requestUrl);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "ServiceRequests / logServiceRequest",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "ESP-APIKEY {{hornbillApiKey}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "X-Correlation-ID",
+                "value": "{{$guid}}",
+                "type": "text"
+              }
+            ],
+            "description": "Creates a Service Request and can spawn BPM when service/catalog inputs are configured.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"@service\": \"apps/com.hornbill.servicemanager/ServiceRequests\",\n  \"@method\": \"logServiceRequest\",\n  \"params\": {\n    \"summary\": \"{{ticketTitle}}\",\n    \"description\": \"{{ticketDescription}}\",\n    \"requestType\": \"Service Request\",\n    \"customerId\": \"{{demoCustomerId}}\",\n    \"customerType\": \"{{demoCustomerType}}\",\n    \"ownerId\": \"{{defaultOwnerId}}\",\n    \"teamId\": \"{{defaultTeamId}}\",\n    \"status\": \"{{defaultStatus}}\",\n    \"priorityId\": \"{{defaultPriorityId}}\",\n    \"categoryId\": \"{{defaultCategoryId}}\",\n    \"categoryName\": \"{{ticketCategory}}\",\n    \"sourceType\": \"Chat\",\n    \"sourceId\": \"CopilotStudio\",\n    \"assetId\": \"\",\n    \"impact\": \"{{defaultImpact}}\",\n    \"urgencyId\": \"\",\n    \"serviceId\": \"{{defaultServiceId}}\",\n    \"questions\": \"{\\\"source\\\":\\\"CopilotStudio\\\",\\\"conversationSummary\\\":\\\"{{conversationSummary}}\\\"}\",\n    \"resolutionDetails\": \"\",\n    \"fileName\": \"\",\n    \"siteId\": \"\",\n    \"siteName\": \"\",\n    \"catalogId\": \"{{defaultCatalogId}}\",\n    \"catalogName\": \"\",\n    \"externalRefNumber\": \"COPILOT-{{$timestamp}}\",\n    \"bpmName\": \"\",\n    \"questionFieldMap\": \"{}\",\n    \"senderDetails\": \"{}\",\n    \"ccDetails\": \"{}\",\n    \"connectionMap\": \"[]\",\n    \"connectionUpdateTimeline\": false,\n    \"connectionTimelineVisibility\": \"{{defaultVisibility}}\",\n    \"employeeAssignmentUserId\": \"\",\n    \"employeeAssignmentNumber\": \"\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{hornbillBaseUrl}}/{{hornbillInstanceId}}/xmlmc/apps/com.hornbill.servicemanager/ServiceRequests",
+              "host": [
+                "{{hornbillBaseUrl}}/{{hornbillInstanceId}}/xmlmc/apps/com.hornbill.servicemanager/ServiceRequests"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP status is 2xx\", function () {",
+                  "    pm.expect(pm.response.code).to.be.within(200, 299);",
+                  "});",
+                  "",
+                  "let response = {};",
+                  "try {",
+                  "    response = pm.response.json();",
+                  "} catch (e) {",
+                  "    console.log(\"Response is not JSON\", e);",
+                  "}",
+                  "",
+                  "const params = response.params || response;",
+                  "const requestId =",
+                  "    params.requestId ||",
+                  "    params.requestRef ||",
+                  "    params.h_pk_reference ||",
+                  "    response.requestId ||",
+                  "    response.requestRef ||",
+                  "    response.ticketId;",
+                  "",
+                  "if (requestId) {",
+                  "    pm.environment.set(\"lastHornbillRequestId\", requestId);",
+                  "    console.log(\"Stored lastHornbillRequestId:\", requestId);",
+                  "}",
+                  "",
+                  "const requestUrl = params.requestUrl || response.requestUrl || response.url;",
+                  "if (requestUrl) {",
+                  "    pm.environment.set(\"lastHornbillRequestUrl\", requestUrl);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "03 - Hornbill Request Read and Lifecycle",
+      "description": "Read and update request lifecycle.",
+      "item": [
+        {
+          "name": "Requests / getRequestRecord",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "ESP-APIKEY {{hornbillApiKey}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "X-Correlation-ID",
+                "value": "{{$guid}}",
+                "type": "text"
+              }
+            ],
+            "description": "Returns details for a request by requestId/reference.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"@service\": \"apps/com.hornbill.servicemanager/Requests\",\n  \"@method\": \"getRequestRecord\",\n  \"params\": {\n    \"requestId\": \"{{lastHornbillRequestId}}\",\n    \"formatValues\": true,\n    \"returnRawValues\": true,\n    \"returnMeta\": false,\n    \"returnRelatedData\": true,\n    \"returnOneToManyData\": false,\n    \"returnActivityStreamAccessToken\": false\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{hornbillBaseUrl}}/{{hornbillInstanceId}}/xmlmc/apps/com.hornbill.servicemanager/Requests",
+              "host": [
+                "{{hornbillBaseUrl}}/{{hornbillInstanceId}}/xmlmc/apps/com.hornbill.servicemanager/Requests"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP status is 2xx\", function () {",
+                  "    pm.expect(pm.response.code).to.be.within(200, 299);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Requests / updateReqTimeline",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "ESP-APIKEY {{hornbillApiKey}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "X-Correlation-ID",
+                "value": "{{$guid}}",
+                "type": "text"
+              }
+            ],
+            "description": "Posts an update to the request timeline.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"@service\": \"apps/com.hornbill.servicemanager/Requests\",\n  \"@method\": \"updateReqTimeline\",\n  \"params\": {\n    \"requestId\": \"{{lastHornbillRequestId}}\",\n    \"content\": \"Oppdatering fra Copilot Studio: {{conversationSummary}}\",\n    \"extra\": \"{}\",\n    \"visibility\": \"{{defaultVisibility}}\",\n    \"imageUrl\": \"\",\n    \"activityType\": \"System\",\n    \"skipBpm\": false\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{hornbillBaseUrl}}/{{hornbillInstanceId}}/xmlmc/apps/com.hornbill.servicemanager/Requests",
+              "host": [
+                "{{hornbillBaseUrl}}/{{hornbillInstanceId}}/xmlmc/apps/com.hornbill.servicemanager/Requests"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP status is 2xx\", function () {",
+                  "    pm.expect(pm.response.code).to.be.within(200, 299);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Requests / assign",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "ESP-APIKEY {{hornbillApiKey}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "X-Correlation-ID",
+                "value": "{{$guid}}",
+                "type": "text"
+              }
+            ],
+            "description": "Assigns a request to a team or analyst.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"@service\": \"apps/com.hornbill.servicemanager/Requests\",\n  \"@method\": \"assign\",\n  \"params\": {\n    \"inReference\": \"{{lastHornbillRequestId}}\",\n    \"inAssignToId\": \"{{defaultOwnerId}}\",\n    \"inAssignToGroupId\": \"{{defaultTeamId}}\",\n    \"returnAfterAssignment\": \"false\",\n    \"updateTimelineInputs\": \"{\\\"activityType\\\":\\\"System\\\",\\\"updateText\\\":\\\"Assigned from Copilot Studio integration\\\",\\\"source\\\":\\\"CopilotStudio\\\",\\\"postType\\\":\\\"Update\\\",\\\"visibility\\\":\\\"{{defaultVisibility}}\\\"}\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{hornbillBaseUrl}}/{{hornbillInstanceId}}/xmlmc/apps/com.hornbill.servicemanager/Requests",
+              "host": [
+                "{{hornbillBaseUrl}}/{{hornbillInstanceId}}/xmlmc/apps/com.hornbill.servicemanager/Requests"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP status is 2xx\", function () {",
+                  "    pm.expect(pm.response.code).to.be.within(200, 299);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Requests / smUpdateStatus",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "ESP-APIKEY {{hornbillApiKey}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "X-Correlation-ID",
+                "value": "{{$guid}}",
+                "type": "text"
+              }
+            ],
+            "description": "Updates request status and optionally timeline text.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"@service\": \"apps/com.hornbill.servicemanager/Requests\",\n  \"@method\": \"smUpdateStatus\",\n  \"params\": {\n    \"requestId\": \"{{lastHornbillRequestId}}\",\n    \"status\": \"Open\",\n    \"subStatus\": \"\",\n    \"manualUpdateTimeline\": \"Status updated from Copilot Studio integration.\",\n    \"visibility\": \"{{defaultVisibility}}\",\n    \"onHoldUntilDate\": \"\",\n    \"isEmailCustomerChecked\": false\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{hornbillBaseUrl}}/{{hornbillInstanceId}}/xmlmc/apps/com.hornbill.servicemanager/Requests",
+              "host": [
+                "{{hornbillBaseUrl}}/{{hornbillInstanceId}}/xmlmc/apps/com.hornbill.servicemanager/Requests"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP status is 2xx\", function () {",
+                  "    pm.expect(pm.response.code).to.be.within(200, 299);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Requests / resolveRequest",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "ESP-APIKEY {{hornbillApiKey}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "X-Correlation-ID",
+                "value": "{{$guid}}",
+                "type": "text"
+              }
+            ],
+            "description": "Resolves a request with resolution text.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"@service\": \"apps/com.hornbill.servicemanager/Requests\",\n  \"@method\": \"resolveRequest\",\n  \"params\": {\n    \"requestId\": \"{{lastHornbillRequestId}}\",\n    \"resolutionText\": \"Resolved from demo integration.\",\n    \"resolutionLanguage\": \"en\",\n    \"closureCategoryId\": \"\",\n    \"closureCategoryName\": \"\",\n    \"updateTimelineInputs\": \"{\\\"activityType\\\":\\\"System\\\",\\\"updateText\\\":\\\"Resolved from Copilot Studio integration\\\",\\\"source\\\":\\\"CopilotStudio\\\",\\\"postType\\\":\\\"Update\\\",\\\"visibility\\\":\\\"{{defaultVisibility}}\\\"}\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{hornbillBaseUrl}}/{{hornbillInstanceId}}/xmlmc/apps/com.hornbill.servicemanager/Requests",
+              "host": [
+                "{{hornbillBaseUrl}}/{{hornbillInstanceId}}/xmlmc/apps/com.hornbill.servicemanager/Requests"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP status is 2xx\", function () {",
+                  "    pm.expect(pm.response.code).to.be.within(200, 299);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Requests / closeRequest",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "ESP-APIKEY {{hornbillApiKey}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "X-Correlation-ID",
+                "value": "{{$guid}}",
+                "type": "text"
+              }
+            ],
+            "description": "Closes a request.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"@service\": \"apps/com.hornbill.servicemanager/Requests\",\n  \"@method\": \"closeRequest\",\n  \"params\": {\n    \"requestId\": \"{{lastHornbillRequestId}}\",\n    \"closeText\": \"Closed from demo integration.\",\n    \"addFeedbackTimer\": false,\n    \"rating\": 5,\n    \"closureCategoryId\": \"\",\n    \"closureCategoryName\": \"\",\n    \"updateTimelineInputs\": \"{\\\"activityType\\\":\\\"System\\\",\\\"updateText\\\":\\\"Closed from Copilot Studio integration\\\",\\\"source\\\":\\\"CopilotStudio\\\",\\\"postType\\\":\\\"Update\\\",\\\"visibility\\\":\\\"{{defaultVisibility}}\\\"}\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{hornbillBaseUrl}}/{{hornbillInstanceId}}/xmlmc/apps/com.hornbill.servicemanager/Requests",
+              "host": [
+                "{{hornbillBaseUrl}}/{{hornbillInstanceId}}/xmlmc/apps/com.hornbill.servicemanager/Requests"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP status is 2xx\", function () {",
+                  "    pm.expect(pm.response.code).to.be.within(200, 299);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "04 - Platform / User Mapping",
+      "description": "Useful for resolving or validating user/customer mapping. Verify permissions and service path in the customer Hornbill instance.",
+      "item": [
+        {
+          "name": "admin / userGetInfo",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "ESP-APIKEY {{hornbillApiKey}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "X-Correlation-ID",
+                "value": "{{$guid}}",
+                "type": "text"
+              }
+            ],
+            "description": "Gets Hornbill user profile info for a userId. Based on Hornbill Platform API admin/userGetInfo documentation.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"@service\": \"admin\",\n  \"@method\": \"userGetInfo\",\n  \"params\": {\n    \"userId\": \"{{demoRequesterUserId}}\",\n    \"wantExtendedUserProfile\": true,\n    \"includeProperties\": false\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{hornbillBaseUrl}}/{{hornbillInstanceId}}/xmlmc/admin",
+              "host": [
+                "{{hornbillBaseUrl}}/{{hornbillInstanceId}}/xmlmc/admin"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP status is 2xx\", function () {",
+                  "    pm.expect(pm.response.code).to.be.within(200, 299);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "99 - Generic XMLMC Call",
+      "description": "Utility request for quickly trying any Hornbill XMLMC method by changing environment variables and JSON params.",
+      "item": [
+        {
+          "name": "Generic Hornbill XMLMC Call",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "ESP-APIKEY {{hornbillApiKey}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "X-Correlation-ID",
+                "value": "{{$guid}}",
+                "type": "text"
+              }
+            ],
+            "description": "Set hornbillServicePath and hornbillMethodName, then edit params.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"@service\": \"{{hornbillServicePath}}\",\n  \"@method\": \"{{hornbillMethodName}}\",\n  \"params\": {}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{hornbillBaseUrl}}/{{hornbillInstanceId}}/xmlmc/{{hornbillServicePath}}",
+              "host": [
+                "{{hornbillBaseUrl}}/{{hornbillInstanceId}}/xmlmc/{{hornbillServicePath}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP status is 2xx\", function () {",
+                  "    pm.expect(pm.response.code).to.be.within(200, 299);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "hornbillBaseUrl",
+      "value": "https://api.hornbill.com"
+    },
+    {
+      "key": "hornbillInstanceId",
+      "value": "yourinstanceid"
+    }
+  ]
+}
