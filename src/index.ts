@@ -2,9 +2,9 @@ import { Hono } from 'hono';
 import type {
   AddTicketCommentRequest,
   CreateTicketRequest,
+  CreateTicketResponse,
   TicketDto,
   TicketPriority,
-  TicketStatus,
   UpdateTicketStatusRequest,
 } from './models';
 import {
@@ -32,23 +32,40 @@ app.post('/tickets', async (c) => {
   }
 
   const ticketId = createTicketId(body.priority);
+  const externalTicketId = ticketId.replace('FAKE-', '');
   const createdAt = new Date().toISOString();
   const priority = body.priority ?? 'Medium';
+  const title = body.title?.trim() ?? 'Untitled support ticket';
+  const summary =
+    body.summary?.trim() ??
+    body.conversationSummary?.trim() ??
+    body.description?.trim() ??
+    title;
 
-  return c.json(
-    {
-      ticketId,
-      externalTicketId: ticketId.replace('FAKE-', ''),
-      status: 'Created' satisfies TicketStatus,
-      title: body.title?.trim() ?? 'Untitled support ticket',
-      priority,
-      createdAt,
-      url: createTicketUrl(ticketId),
-      message: 'Support ticket created successfully.',
-      correlationId: body.correlationId,
+  const response: CreateTicketResponse = {
+    success: true,
+    ticketId,
+    externalTicketId,
+    requestId: externalTicketId,
+    status: {
+      key: 'status.new',
+      label: 'New',
     },
-    201,
-  );
+    title,
+    summary,
+    priority,
+    createdAt,
+    url: createTicketUrl(ticketId),
+    message: 'Support ticket created successfully.',
+    warnings: [],
+    hornbill: {
+      bpmProcessId: createBpmProcessId(ticketId),
+    },
+    correlationId: body.correlationId,
+    sourceConversationId: body.sourceConversationId,
+  };
+
+  return c.json(response, 201);
 });
 
 app.get('/tickets/:ticketId', (c) => {
@@ -183,8 +200,12 @@ app.get('/users/resolve', (c) => {
 });
 
 function createTicketId(priority: TicketPriority | undefined): string {
-  const prefix = priority === 'High' ? 'FAKE-HIGH' : 'FAKE-INC';
+  const prefix = priority === 'High' || priority === 'Critical' ? 'FAKE-HIGH' : 'FAKE-INC';
   return `${prefix}-${Math.floor(100000 + Math.random() * 900000)}`;
+}
+
+function createBpmProcessId(ticketId: string): string {
+  return `FAKE-BPM-${ticketId.replace(/^FAKE-(INC|HIGH)-/, '')}`;
 }
 
 function createTicketUrl(ticketId: string): string {

@@ -1,12 +1,20 @@
-import type { CreateTicketRequest, AddTicketCommentRequest, UpdateTicketStatusRequest, ValidationError } from './models';
+import type {
+  AddTicketCommentRequest,
+  CreateTicketRequest,
+  TicketPriority,
+  UpdateTicketStatusRequest,
+  ValidationError,
+} from './models';
+
+const validPriorities: TicketPriority[] = ['Low', 'Medium', 'High', 'Critical'];
 
 export function validateCreateTicketRequest(request: CreateTicketRequest): ValidationError | null {
   const details: ValidationError['details'] = [];
 
-  if (!hasValue(request.requesterEmail) && !hasValue(request.requesterUserId)) {
+  if (!hasValue(request.requesterEmail) && !hasValue(request.requesterUserId) && !hasValue(request.requesterId)) {
     details.push({
       field: 'requesterEmail',
-      message: 'Requester email or requester user id is required.',
+      message: 'Requester email, requester user id or requester id is required.',
     });
   }
 
@@ -21,6 +29,13 @@ export function validateCreateTicketRequest(request: CreateTicketRequest): Valid
     details.push({
       field: 'description',
       message: 'Description is required.',
+    });
+  }
+
+  if (hasValue(request.priority) && !isValidPriority(request.priority)) {
+    details.push({
+      field: 'priority',
+      message: 'Priority must be Low, Medium, High or Critical.',
     });
   }
 
@@ -71,4 +86,8 @@ export function validateUpdateTicketStatusRequest(request: UpdateTicketStatusReq
 
 function hasValue(value: string | undefined | null): value is string {
   return typeof value === 'string' && value.trim().length > 0;
+}
+
+function isValidPriority(value: string): value is TicketPriority {
+  return validPriorities.includes(value as TicketPriority);
 }
