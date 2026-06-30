@@ -1,8 +1,5 @@
-import express from "express";
-import crypto from "node:crypto";
-
-const app = express();
-app.use(express.json());
+import { createServer } from "node:http";
+import { randomInt } from "node:crypto";
 
 const port = Number(process.env.PORT ?? 3001);
 const publicBaseUrl = process.env.PUBLIC_BASE_URL ?? `http://localhost:${port}`;
@@ -10,7 +7,7 @@ const publicBaseUrl = process.env.PUBLIC_BASE_URL ?? `http://localhost:${port}`;
 const openApiDocument = {
   openapi: "3.0.3",
   info: {
-    title: "Fake Ticket API",
+    title: "Fake Hornbill Agent API",
     version: "1.0.0",
     description: "Fake API used to demonstrate MCP tool discovery and escalation"
   },
@@ -61,21 +58,7 @@ const openApiDocument = {
         },
         responses: {
           "201": {
-            description: "Ticket created",
-            content: {
-              "application/json": {
-                schema: {
-                  type: "object",
-                  properties: {
-                    ticketId: { type: "string" },
-                    externalTicketId: { type: "string" },
-                    status: { type: "string" },
-                    url: { type: "string" }
-                  },
-                  required: ["ticketId", "externalTicketId", "status"]
-                }
-              }
-            }
+            description: "Ticket created"
           }
         }
       }
@@ -83,37 +66,89 @@ const openApiDocument = {
   }
 };
 
-app.get("/openapi.json", (_req, res) => {
-  res.json(openApiDocument);
-});
+function sendJson(res: any, statusCode: number, body: unknown) {
+  res.writeHead(statusCode, {
+    "Content-Type": "application/json"
+  });
 
-app.post("/tickets", (req, res) => {
-  const { title, description, priority, requesterId } = req.body ?? {};
+  res.end(JSON.stringify(body, null, 2));
+}
 
-  if (!title || !description) {
-    return res.status(400).json({
-      error: "title and description are required"
+async function readBody(req: any): Promise<any> {
+  return new Promise((resolve, reject) => {
+    let data = "";
+
+    req.on("data", (chunk: Buffer) => {
+      data += chunk.toString();
+    });
+
+    req.on("end", () => {
+      if (!data) {
+        resolve({});
+        return;
+      }
+
+      try {
+        resolve(JSON.parse(data));
+      } catch (error) {
+        reject(error);
+      }
+    });
+
+    req.on("error", reject);
+  });
+}
+
+const server = createServer(async (req, res) => {
+  try {
+    if (req.method === "GET" && req.url === "/openapi.json") {
+      sendJson(res, 200, openApiDocument);
+      return;
+    }
+
+    if (req.method === "POST" && req.url === "/tickets") {
+      const body = await readBody(req);
+
+      const { title, description, priority, requesterId } = body;
+
+      if (!title || !description) {
+        sendJson(res, 400, {
+          error: "title and description are required"
+        });
+        return;
+      }
+
+      const id = randomInt(100000, 999999);
+      const externalTicketId = `FAKE-${id}`;
+
+      sendJson(res, 201, {
+        ticketId: externalTicketId,
+        externalTicketId,
+        status: "Created",
+        url: `${publicBaseUrl}/tickets/${externalTicketId}`,
+        received: {
+          title,
+          description,
+          priority: priority ?? "medium",
+          requesterId: requesterId ?? "unknown"
+        }
+      });
+
+      return;
+    }
+
+    sendJson(res, 404, {
+      error: "Not found"
+    });
+  } catch (error) {
+    sendJson(res, 500, {
+      error: "Internal server error",
+      detail: error instanceof Error ? error.message : String(error)
     });
   }
-
-  const id = crypto.randomInt(100000, 999999);
-  const externalTicketId = `FAKE-${id}`;
-
-  return res.status(201).json({
-    ticketId: externalTicketId,
-    externalTicketId,
-    status: "Created",
-    url: `${publicBaseUrl}/tickets/${externalTicketId}`,
-    received: {
-      title,
-      description,
-      priority: priority ?? "medium",
-      requesterId: requesterId ?? "unknown"
-    }
-  });
 });
 
-app.listen(port, () => {
+server.listen(port, () => {
   console.log(`Fake API running on ${publicBaseUrl}`);
   console.log(`OpenAPI: ${publicBaseUrl}/openapi.json`);
 });
