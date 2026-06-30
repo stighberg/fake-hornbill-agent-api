@@ -1,18 +1,19 @@
 {
-  "name": "fake-hornbill-agent-api",
-  "version": "0.1.0",
-  "private": true,
+  "name": "hornbill-demo-mcp",
+  "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "wrangler dev",
-    "deploy": "wrangler deploy",
-    "typecheck": "tsc --noEmit"
+    "fake-api": "tsx src/fake-api.ts",
+    "mcp": "tsx src/mcp-server.ts",
+    "inspect": "npx @modelcontextprotocol/inspector tsx src/mcp-server.ts"
   },
   "dependencies": {
-    "hono": "^4.6.0"
+    "@modelcontextprotocol/sdk": "latest",
+    "express": "latest"
   },
   "devDependencies": {
-    "typescript": "^5.6.0",
-    "wrangler": "^4.105.0"
+    "@types/express": "latest",
+    "tsx": "latest",
+    "typescript": "latest"
   }
 }
