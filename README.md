@@ -46,6 +46,17 @@ Copilot Studio
 
 Postman Mock Server is still useful for static examples, but Postman Flow or the TypeScript API is better when the demo needs validation and branching.
 
+## Azure demo deployment
+
+The `workflows` branch includes a GitHub Actions workflow for deploying the TypeScript demo API to Azure Web App.
+
+Required GitHub configuration:
+
+- Repository variable `AZURE_WEBAPP_NAME`: the Azure Web App name
+- Repository secret `AZURE_WEBAPP_PUBLISH_PROFILE`: the publish profile downloaded from the Azure Web App
+
+The workflow installs dependencies, runs `npm run typecheck`, and deploys the repository contents. Azure starts the API with `npm start`, which runs `src/fake-api.ts` and listens on the `PORT` environment variable supplied by Azure.
+
 ## Repository structure
 
 ```text

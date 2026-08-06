@@ -2,18 +2,24 @@
   "name": "hornbill-demo-mcp",
   "version": "1.0.0",
   "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
+    "start": "tsx src/fake-api.ts",
     "fake-api": "tsx src/fake-api.ts",
     "mcp": "tsx src/mcp-server.ts",
+    "typecheck": "tsc --noEmit",
     "inspect": "npx @modelcontextprotocol/inspector tsx src/mcp-server.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "latest",
-    "express": "latest"
+    "express": "latest",
+    "tsx": "latest"
   },
   "devDependencies": {
     "@types/express": "latest",
-    "tsx": "latest",
+    "@types/node": "^26.1.2",
     "typescript": "latest"
   }
 }
