@@ -267,8 +267,9 @@ app.post("/mcp", async (req, res) => {
       : sessionIdHeader;
 
     let session = sessionId ? mcpSessions[sessionId] : undefined;
+    const isInitialization = isInitializeRequest(req.body);
 
-    if (!session && isInitializeRequest(req.body)) {
+    if (!session && isInitialization) {
       const server = createMcpServer();
       let transport: StreamableHTTPServerTransport;
 
@@ -310,6 +311,10 @@ app.post("/mcp", async (req, res) => {
 
     const { transport } = session;
     await transport.handleRequest(req, res, req.body);
+
+    if (isInitialization && transport.sessionId) {
+      mcpSessions[transport.sessionId] = session;
+    }
   } catch (error) {
     console.error("Error handling MCP request:", error);
 
