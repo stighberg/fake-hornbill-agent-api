@@ -1,5 +1,11 @@
-import { createServer } from "node:http";
 import { randomInt } from "node:crypto";
+import express from "express";
+import { Server } from "@modelcontextprotocol/sdk/server/index.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import {
+  CallToolRequestSchema,
+  ListToolsRequestSchema
+} from "@modelcontextprotocol/sdk/types.js";
 
 const port = Number(process.env.PORT ?? 3001);
 const publicBaseUrl = process.env.PUBLIC_BASE_URL ?? `http://localhost:${port}`;
@@ -66,89 +72,226 @@ const openApiDocument = {
   }
 };
 
-function sendJson(res: any, statusCode: number, body: unknown) {
-  res.writeHead(statusCode, {
-    "Content-Type": "application/json"
-  });
+type OpenApiDocument = typeof openApiDocument;
 
-  res.end(JSON.stringify(body, null, 2));
-}
+type JsonSchema = {
+  type?: string;
+  properties?: Record<string, unknown>;
+  required?: string[];
+  additionalProperties?: boolean;
+  [key: string]: unknown;
+};
 
-async function readBody(req: any): Promise<any> {
-  return new Promise((resolve, reject) => {
-    let data = "";
+type DiscoveredTool = {
+  name: string;
+  description: string;
+  inputSchema: JsonSchema;
+  method: string;
+  path: string;
+  baseUrl: string;
+};
 
-    req.on("data", (chunk: Buffer) => {
-      data += chunk.toString();
-    });
+function discoverTools(document: OpenApiDocument): DiscoveredTool[] {
+  const baseUrl = document.servers?.[0]?.url ?? publicBaseUrl;
+  const tools: DiscoveredTool[] = [];
 
-    req.on("end", () => {
-      if (!data) {
-        resolve({});
-        return;
+  for (const [path, pathItem] of Object.entries(document.paths)) {
+    for (const [method, operation] of Object.entries(pathItem)) {
+      if (operation["x-mcp-enabled"] !== true) {
+        continue;
       }
 
-      try {
-        resolve(JSON.parse(data));
-      } catch (error) {
-        reject(error);
-      }
-    });
-
-    req.on("error", reject);
-  });
-}
-
-const server = createServer(async (req, res) => {
-  try {
-    if (req.method === "GET" && req.url === "/openapi.json") {
-      sendJson(res, 200, openApiDocument);
-      return;
-    }
-
-    if (req.method === "POST" && req.url === "/tickets") {
-      const body = await readBody(req);
-
-      const { title, description, priority, requesterId } = body;
-
-      if (!title || !description) {
-        sendJson(res, 400, {
-          error: "title and description are required"
-        });
-        return;
+      if (method.toLowerCase() !== "post") {
+        continue;
       }
 
-      const id = randomInt(100000, 999999);
-      const externalTicketId = `FAKE-${id}`;
+      const inputSchema =
+        operation.requestBody?.content?.["application/json"]?.schema ?? {
+          type: "object",
+          properties: {},
+          required: []
+        };
 
-      sendJson(res, 201, {
-        ticketId: externalTicketId,
-        externalTicketId,
-        status: "Created",
-        url: `${publicBaseUrl}/tickets/${externalTicketId}`,
-        received: {
-          title,
-          description,
-          priority: priority ?? "medium",
-          requesterId: requesterId ?? "unknown"
-        }
+      tools.push({
+        name: operation["x-mcp-name"] ?? operation.operationId ?? `${method}_${path}`,
+        description:
+          operation["x-mcp-description"] ??
+          operation.description ??
+          operation.summary ??
+          operation.operationId ??
+          `${method.toUpperCase()} ${path}`,
+        inputSchema,
+        method,
+        path,
+        baseUrl
       });
+    }
+  }
 
-      return;
+  return tools;
+}
+
+const discoveredTools = discoverTools(openApiDocument);
+
+function createMcpServer() {
+  const server = new Server(
+    {
+      name: "hornbill-demo-mcp-server",
+      version: "1.0.0"
+    },
+    {
+      capabilities: {
+        tools: {}
+      }
+    }
+  );
+
+  server.setRequestHandler(ListToolsRequestSchema, async () => {
+    return {
+      tools: discoveredTools.map((tool) => ({
+        name: tool.name,
+        description: tool.description,
+        inputSchema: tool.inputSchema
+      }))
+    };
+  });
+
+  server.setRequestHandler(CallToolRequestSchema, async (request) => {
+    const toolName = request.params.name;
+    const args = request.params.arguments ?? {};
+
+    const tool = discoveredTools.find((x) => x.name === toolName);
+
+    if (!tool) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Unknown tool: ${toolName}`
+          }
+        ],
+        isError: true
+      };
     }
 
-    sendJson(res, 404, {
-      error: "Not found"
+    const response = await fetch(`${tool.baseUrl}${tool.path}`, {
+      method: tool.method.toUpperCase(),
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(args)
     });
+
+    const responseText = await response.text();
+
+    let responseBody: unknown;
+    try {
+      responseBody = JSON.parse(responseText);
+    } catch {
+      responseBody = responseText;
+    }
+
+    if (!response.ok) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `API call failed with ${response.status}: ${JSON.stringify(responseBody)}`
+          }
+        ],
+        isError: true
+      };
+    }
+
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify(responseBody, null, 2)
+        }
+      ]
+    };
+  });
+
+  return server;
+}
+
+const app = express();
+
+app.use(express.json());
+
+app.get("/openapi.json", (_req, res) => {
+  res.json(openApiDocument);
+});
+
+app.post("/tickets", (req, res) => {
+  const { title, description, priority, requesterId } = req.body ?? {};
+
+  if (!title || !description) {
+    res.status(400).json({
+      error: "title and description are required"
+    });
+    return;
+  }
+
+  const id = randomInt(100000, 999999);
+  const externalTicketId = `FAKE-${id}`;
+
+  res.status(201).json({
+    ticketId: externalTicketId,
+    externalTicketId,
+    status: "Created",
+    url: `${publicBaseUrl}/tickets/${externalTicketId}`,
+    received: {
+      title,
+      description,
+      priority: priority ?? "medium",
+      requesterId: requesterId ?? "unknown"
+    }
+  });
+});
+
+app.post("/mcp", async (req, res) => {
+  const server = createMcpServer();
+  const transport = new StreamableHTTPServerTransport({
+    sessionIdGenerator: undefined
+  });
+
+  try {
+    await server.connect(transport);
+    await transport.handleRequest(req, res, req.body);
   } catch (error) {
-    sendJson(res, 500, {
-      error: "Internal server error",
-      detail: error instanceof Error ? error.message : String(error)
-    });
+    console.error("Error handling MCP request:", error);
+
+    if (!res.headersSent) {
+      res.status(500).json({
+        jsonrpc: "2.0",
+        error: {
+          code: -32603,
+          message: "Internal server error"
+        },
+        id: null
+      });
+    }
+  } finally {
+    await transport.close();
+    await server.close();
   }
 });
 
-server.listen(port, () => {
+app.get("/mcp", (_req, res) => {
+  res.status(405).json({
+    jsonrpc: "2.0",
+    error: {
+      code: -32000,
+      message: "Method not allowed. Use POST for Streamable HTTP MCP."
+    },
+    id: null
+  });
+});
+
+app.listen(port, () => {
   console.log(`Fake API running on ${publicBaseUrl}`);
   console.log(`OpenAPI: ${publicBaseUrl}/openapi.json`);
+  console.log(`MCP: ${publicBaseUrl}/mcp`);
 });
