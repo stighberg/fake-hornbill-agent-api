@@ -11,6 +11,32 @@ import {
 const port = Number(process.env.PORT ?? 3001);
 const publicBaseUrl = process.env.PUBLIC_BASE_URL ?? `http://localhost:${port}`;
 
+type TicketStatus = "Created" | "In Progress" | "Waiting for Customer" | "Resolved" | "Closed";
+type TicketPriority = "low" | "medium" | "high";
+
+type TicketComment = {
+  id: string;
+  author: string;
+  text: string;
+  createdAt: string;
+};
+
+type Ticket = {
+  ticketId: string;
+  externalTicketId: string;
+  title: string;
+  description: string;
+  priority: TicketPriority;
+  requesterId: string;
+  status: TicketStatus;
+  url: string;
+  createdAt: string;
+  updatedAt: string;
+  comments: TicketComment[];
+};
+
+const tickets = new Map<string, Ticket>();
+
 const openApiDocument = {
   openapi: "3.0.3",
   info: {
@@ -69,11 +95,174 @@ const openApiDocument = {
           }
         }
       }
+    },
+    "/tickets/{ticketId}": {
+      get: {
+        operationId: "get_ticket",
+        summary: "Get support ticket",
+        description: "Reads the current status, summary, and comments for a fake support ticket.",
+        "x-mcp-enabled": true,
+        "x-mcp-name": "get_ticket",
+        "x-mcp-description": "Get the current status and details for an existing support ticket.",
+        "x-mcp-input-schema": {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            ticketId: {
+              type: "string",
+              description: "Ticket id, for example FAKE-123456"
+            }
+          },
+          required: ["ticketId"]
+        },
+        responses: {
+          "200": {
+            description: "Ticket found"
+          },
+          "404": {
+            description: "Ticket not found"
+          }
+        }
+      }
+    },
+    "/tickets/{ticketId}/comments": {
+      post: {
+        operationId: "add_ticket_comment",
+        summary: "Add support ticket comment",
+        description: "Adds a user or agent comment to the fake ticket timeline.",
+        "x-mcp-enabled": true,
+        "x-mcp-name": "add_ticket_comment",
+        "x-mcp-description": "Add a comment to an existing support ticket.",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                additionalProperties: false,
+                properties: {
+                  ticketId: {
+                    type: "string",
+                    description: "Ticket id, for example FAKE-123456"
+                  },
+                  text: {
+                    type: "string",
+                    description: "Comment text to add to the ticket timeline"
+                  },
+                  author: {
+                    type: "string",
+                    description: "Name or id of the person or agent adding the comment"
+                  }
+                },
+                required: ["ticketId", "text"]
+              }
+            }
+          }
+        },
+        responses: {
+          "200": {
+            description: "Comment added"
+          },
+          "404": {
+            description: "Ticket not found"
+          }
+        }
+      }
+    },
+    "/tickets/{ticketId}/status": {
+      patch: {
+        operationId: "update_ticket_status",
+        summary: "Update support ticket status",
+        description: "Updates the fake ticket status for demo workflows.",
+        "x-mcp-enabled": true,
+        "x-mcp-name": "update_ticket_status",
+        "x-mcp-description": "Update the status of an existing support ticket.",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                additionalProperties: false,
+                properties: {
+                  ticketId: {
+                    type: "string",
+                    description: "Ticket id, for example FAKE-123456"
+                  },
+                  status: {
+                    type: "string",
+                    enum: ["Created", "In Progress", "Waiting for Customer", "Resolved", "Closed"],
+                    description: "New ticket status"
+                  },
+                  comment: {
+                    type: "string",
+                    description: "Optional status change note"
+                  }
+                },
+                required: ["ticketId", "status"]
+              }
+            }
+          }
+        },
+        responses: {
+          "200": {
+            description: "Status updated"
+          },
+          "404": {
+            description: "Ticket not found"
+          }
+        }
+      }
+    },
+    "/users/resolve": {
+      get: {
+        operationId: "resolve_requester",
+        summary: "Resolve requester",
+        description: "Resolves an email address or user id into a fake requester profile.",
+        "x-mcp-enabled": true,
+        "x-mcp-name": "resolve_requester",
+        "x-mcp-description": "Resolve a requester by email address or user id before creating a ticket.",
+        "x-mcp-input-schema": {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            email: {
+              type: "string",
+              description: "Requester email address"
+            },
+            userId: {
+              type: "string",
+              description: "Requester user id"
+            }
+          }
+        },
+        responses: {
+          "200": {
+            description: "Requester resolved"
+          }
+        }
+      }
     }
   }
 };
 
 type OpenApiDocument = typeof openApiDocument;
+type OpenApiOperation = {
+  operationId?: string;
+  summary?: string;
+  description?: string;
+  requestBody?: {
+    content?: {
+      "application/json"?: {
+        schema?: JsonSchema;
+      };
+    };
+  };
+  ["x-mcp-input-schema"]?: JsonSchema;
+  ["x-mcp-enabled"]?: boolean;
+  ["x-mcp-name"]?: string;
+  ["x-mcp-description"]?: string;
+};
 
 type JsonSchema = {
   type?: string;
@@ -97,16 +286,15 @@ function discoverTools(document: OpenApiDocument): DiscoveredTool[] {
   const tools: DiscoveredTool[] = [];
 
   for (const [path, pathItem] of Object.entries(document.paths)) {
-    for (const [method, operation] of Object.entries(pathItem)) {
+    for (const [method, operation] of Object.entries(pathItem) as Array<
+      [string, OpenApiOperation]
+    >) {
       if (operation["x-mcp-enabled"] !== true) {
         continue;
       }
 
-      if (method.toLowerCase() !== "post") {
-        continue;
-      }
-
       const inputSchema =
+        operation["x-mcp-input-schema"] ??
         operation.requestBody?.content?.["application/json"]?.schema ?? {
           type: "object",
           properties: {},
@@ -175,12 +363,50 @@ function createMcpServer() {
       };
     }
 
-    const response = await fetch(`${tool.baseUrl}${tool.path}`, {
-      method: tool.method.toUpperCase(),
+    const argsRecord = args as Record<string, unknown>;
+    const pathParams = Array.from(tool.path.matchAll(/\{([^}]+)\}/g)).map(
+      (match) => match[1]
+    );
+    let requestPath = tool.path;
+
+    for (const param of pathParams) {
+      const value = argsRecord[param];
+
+      if (value === undefined || value === null) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Missing required path parameter: ${param}`
+            }
+          ],
+          isError: true
+        };
+      }
+
+      requestPath = requestPath.replace(`{${param}}`, encodeURIComponent(String(value)));
+    }
+
+    const requestArgs = Object.fromEntries(
+      Object.entries(argsRecord).filter(([key]) => !pathParams.includes(key))
+    );
+    const url = new URL(`${tool.baseUrl}${requestPath}`);
+    const method = tool.method.toUpperCase();
+
+    if (method === "GET") {
+      for (const [key, value] of Object.entries(requestArgs)) {
+        if (value !== undefined && value !== null) {
+          url.searchParams.set(key, String(value));
+        }
+      }
+    }
+
+    const response = await fetch(url, {
+      method,
       headers: {
         "Content-Type": "application/json"
       },
-      body: JSON.stringify(args)
+      body: method === "GET" ? undefined : JSON.stringify(requestArgs)
     });
 
     const responseText = await response.text();
@@ -244,18 +470,149 @@ app.post("/tickets", (req, res) => {
 
   const id = randomInt(100000, 999999);
   const externalTicketId = `FAKE-${id}`;
-
-  res.status(201).json({
+  const now = new Date().toISOString();
+  const ticket: Ticket = {
     ticketId: externalTicketId,
     externalTicketId,
+    title,
+    description,
+    priority: priority ?? "medium",
+    requesterId: requesterId ?? "unknown",
     status: "Created",
     url: `${publicBaseUrl}/tickets/${externalTicketId}`,
+    createdAt: now,
+    updatedAt: now,
+    comments: []
+  };
+
+  tickets.set(externalTicketId, ticket);
+
+  res.status(201).json({
+    ticketId: ticket.ticketId,
+    externalTicketId: ticket.externalTicketId,
+    status: ticket.status,
+    url: ticket.url,
     received: {
-      title,
-      description,
-      priority: priority ?? "medium",
-      requesterId: requesterId ?? "unknown"
+      title: ticket.title,
+      description: ticket.description,
+      priority: ticket.priority,
+      requesterId: ticket.requesterId
     }
+  });
+});
+
+app.get("/tickets/:ticketId", (req, res) => {
+  const ticket = tickets.get(req.params.ticketId);
+
+  if (!ticket) {
+    res.status(404).json({
+      error: "Ticket not found",
+      ticketId: req.params.ticketId
+    });
+    return;
+  }
+
+  res.json(ticket);
+});
+
+app.post("/tickets/:ticketId/comments", (req, res) => {
+  const ticket = tickets.get(req.params.ticketId);
+
+  if (!ticket) {
+    res.status(404).json({
+      error: "Ticket not found",
+      ticketId: req.params.ticketId
+    });
+    return;
+  }
+
+  const { text, author } = req.body ?? {};
+
+  if (!text) {
+    res.status(400).json({
+      error: "text is required"
+    });
+    return;
+  }
+
+  const comment: TicketComment = {
+    id: `COMMENT-${randomInt(1000, 9999)}`,
+    author: author ?? "agent",
+    text,
+    createdAt: new Date().toISOString()
+  };
+
+  ticket.comments.push(comment);
+  ticket.updatedAt = comment.createdAt;
+
+  res.json({
+    ticketId: ticket.ticketId,
+    status: ticket.status,
+    comment,
+    comments: ticket.comments
+  });
+});
+
+app.patch("/tickets/:ticketId/status", (req, res) => {
+  const ticket = tickets.get(req.params.ticketId);
+
+  if (!ticket) {
+    res.status(404).json({
+      error: "Ticket not found",
+      ticketId: req.params.ticketId
+    });
+    return;
+  }
+
+  const { status, comment } = req.body ?? {};
+  const allowedStatuses: TicketStatus[] = [
+    "Created",
+    "In Progress",
+    "Waiting for Customer",
+    "Resolved",
+    "Closed"
+  ];
+
+  if (!allowedStatuses.includes(status)) {
+    res.status(400).json({
+      error: "status is required and must be a valid demo status",
+      allowedStatuses
+    });
+    return;
+  }
+
+  ticket.status = status;
+  ticket.updatedAt = new Date().toISOString();
+
+  if (comment) {
+    ticket.comments.push({
+      id: `COMMENT-${randomInt(1000, 9999)}`,
+      author: "agent",
+      text: comment,
+      createdAt: ticket.updatedAt
+    });
+  }
+
+  res.json(ticket);
+});
+
+app.get("/users/resolve", (req, res) => {
+  const email = typeof req.query.email === "string" ? req.query.email : undefined;
+  const userId = typeof req.query.userId === "string" ? req.query.userId : undefined;
+  const localPart = email?.split("@")[0] ?? userId ?? "demo.user";
+
+  res.json({
+    requesterId: userId ?? `REQ-${localPart.replace(/[^a-zA-Z0-9]/g, "-").toUpperCase()}`,
+    displayName:
+      localPart
+        .split(/[._-]/)
+        .filter(Boolean)
+        .map((part) => `${part[0]?.toUpperCase() ?? ""}${part.slice(1)}`)
+        .join(" ") || "Demo User",
+    email: email ?? `${localPart}@example.com`,
+    department: "Demo Support",
+    location: "Norway",
+    vip: false
   });
 });
 
