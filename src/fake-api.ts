@@ -1,9 +1,10 @@
-import { randomInt } from "node:crypto";
+import { randomInt, randomUUID } from "node:crypto";
 import express from "express";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import {
   CallToolRequestSchema,
+  isInitializeRequest,
   ListToolsRequestSchema
 } from "@modelcontextprotocol/sdk/types.js";
 
@@ -217,6 +218,13 @@ function createMcpServer() {
 }
 
 const app = express();
+const mcpSessions: Record<
+  string,
+  {
+    server: Server;
+    transport: StreamableHTTPServerTransport;
+  }
+> = {};
 
 app.use(express.json());
 
@@ -252,13 +260,55 @@ app.post("/tickets", (req, res) => {
 });
 
 app.post("/mcp", async (req, res) => {
-  const server = createMcpServer();
-  const transport = new StreamableHTTPServerTransport({
-    sessionIdGenerator: undefined
-  });
-
   try {
-    await server.connect(transport);
+    const sessionIdHeader = req.headers["mcp-session-id"];
+    const sessionId = Array.isArray(sessionIdHeader)
+      ? sessionIdHeader[0]
+      : sessionIdHeader;
+
+    let session = sessionId ? mcpSessions[sessionId] : undefined;
+
+    if (!session && isInitializeRequest(req.body)) {
+      const server = createMcpServer();
+      let transport: StreamableHTTPServerTransport;
+
+      transport = new StreamableHTTPServerTransport({
+        sessionIdGenerator: () => randomUUID(),
+        enableJsonResponse: true,
+        onsessioninitialized: (newSessionId) => {
+          mcpSessions[newSessionId] = {
+            server,
+            transport
+          };
+        },
+        onsessionclosed: async (closedSessionId) => {
+          const closedSession = mcpSessions[closedSessionId];
+          delete mcpSessions[closedSessionId];
+
+          await closedSession?.server.close();
+        }
+      });
+
+      await server.connect(transport);
+      session = {
+        server,
+        transport
+      };
+    }
+
+    if (!session) {
+      res.status(400).json({
+        jsonrpc: "2.0",
+        error: {
+          code: -32000,
+          message: "Bad Request: initialize first, then pass Mcp-Session-Id."
+        },
+        id: null
+      });
+      return;
+    }
+
+    const { transport } = session;
     await transport.handleRequest(req, res, req.body);
   } catch (error) {
     console.error("Error handling MCP request:", error);
@@ -273,9 +323,6 @@ app.post("/mcp", async (req, res) => {
         id: null
       });
     }
-  } finally {
-    await transport.close();
-    await server.close();
   }
 });
 
@@ -288,6 +335,31 @@ app.get("/mcp", (_req, res) => {
     },
     id: null
   });
+});
+
+app.delete("/mcp", async (req, res) => {
+  const sessionIdHeader = req.headers["mcp-session-id"];
+  const sessionId = Array.isArray(sessionIdHeader)
+    ? sessionIdHeader[0]
+    : sessionIdHeader;
+
+  const session = sessionId ? mcpSessions[sessionId] : undefined;
+
+  if (!session) {
+    res.status(404).json({
+      jsonrpc: "2.0",
+      error: {
+        code: -32000,
+        message: "Session not found."
+      },
+      id: null
+    });
+    return;
+  }
+
+  await session.transport.handleRequest(req, res);
+  delete mcpSessions[sessionId as string];
+  await session.server.close();
 });
 
 app.listen(port, () => {
